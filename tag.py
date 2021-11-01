@@ -70,7 +70,6 @@ def get_tags():
         # mp3s may include directories, in which case walk through
         for root, _, files in os.walk(p):
             for name in files:
-                print(f'name: {name}')
                 f = os.path.join(root, name)
                 # for non-mp3 files, simply add filename columns
                 if os.path.splitext(name)[-1] != '.mp3':
@@ -122,6 +121,7 @@ def set_tags():
                 print(f"{yellow}warning:{nc} file {blue}{copypath}{nc} already exists. "
                     "remove file or set {blue}-r{nc} flag. skipping...")
                 continue
+            print(f"{blue}info:{nc} processing file {blue}{copypath}{nc}")
             shutil.copy(orig, copypath)
             if os.path.splitext(copy)[-1] != '.mp3':
                 continue
@@ -142,9 +142,10 @@ def set_tags():
                         setattr(e.tag, col, None if val == 'None' else val)
                         continue
                     setattr(e.tag, col, val)
-                    print(col, val)
-                    print(getattr(e.tag, col))
-            e.tag.save()
+            try:
+                e.tag.save()
+            except BaseException:
+                print(f"{red}error:{nc} could not save id3 tag for file {blue}{copypath}{nc}")
         else:
             print(f"{red}error:{nc} output file {blue}{copypath}{nc} must be in output directory {blue}{outdir}{nc}. skipping...")
 
