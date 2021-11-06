@@ -1,9 +1,11 @@
 #!python
-import os, sys, argparse, eyed3, shutil, re
+import argparse, ast, eyed3, os, sys, shutil, re
 from prettytable import PrettyTable
 from colorama import Fore, Style
 from datetime import datetime
 from pathlib import Path
+from mutagen.mp3 import MP3
+from mutagen.easyid3 import EasyID3
 
 # for colored text
 blue = Fore.BLUE
@@ -21,8 +23,8 @@ p.add_argument('mp3s', metavar='mp3s', type=str, nargs='*',
         help='mp3 files to set the id3 tag for')
 p.add_argument('-t', '--tags', dest='tags',
         action='store', type=str, required=False,
-        default=['title', 'artist', 'album', 'disc_num', 'track_num', 'genre', 'composer'],
-        help='id3 tags to set (see ')
+        default=['title', 'artist', 'album', 'discnumber', 'tracknumber', 'genre', 'composer'],
+        help='id3 tags to set (see mutagen easyid3 tags for valid values')
 p.add_argument('-f', '--tagsfile', dest='tagsfile',
         action='store', type=str, required=False,
         default='/tmp/id3_tags.txt',
@@ -63,7 +65,7 @@ def get_tags():
             sys.exit()
 
     x = PrettyTable()
-    x.field_names = ['filename', 'new_filename'] + tags
+    x.field_names = ['filename', 'newfilename'] + tags
     x.align = 'l'
 
     for p in mp3s:
@@ -75,12 +77,12 @@ def get_tags():
                 if os.path.splitext(name)[-1] != '.mp3':
                     row = [f,f] + ['' for _ in range(len(tags))]
                 else:
-                    e = eyed3.load(f)
-                    if e is None:
-                        print(f"{red}error:{nc} could not read data from {blue}{f}{nc}. skipping...")
-                        continue # bad mp3
-                    row = [f,f] + [getattr(e.tag, field) for field in tags]
-                x.add_row(row)
+                    try:
+                        e = EasyID3(f)
+                        row = [f,f] + [(repr(e[field] if len(e[field])>1 else e[field][0]) if field in e else '') for field in tags]
+                        x.add_row(row)
+                    except BaseException:
+                        print(f"{red}error:{nc} could not read id3 tag for file {blue}{f}{nc}. skipping...")
 
     s = x.get_string(sortby='filename')
     with open(tagsfile, 'w') as f:
@@ -103,8 +105,7 @@ def set_tags():
     columns = [s.strip() for s in f.readline().split('|')[1:-1]]
     f.readline() # discard third line also
     iorig = columns.index('filename')
-    icopy = columns.index('new_filename')
-    tup2 = r'\((\w+), (\w+)\)'
+    icopy = columns.index('newfilename')
 
     while True:
         sections = f.readline().split('|')[1:-1]
@@ -126,26 +127,13 @@ def set_tags():
             if os.path.splitext(copy)[-1] != '.mp3':
                 continue
             # set id3 tags
-            e = eyed3.load(copypath)
+            # e = eyed3.load(copypath)
+            e = EasyID3(copypath)
             for i,val in enumerate(vals):
                 if i != iorig and i != icopy:
                     col = columns[i]
-                    # parse method depends on column type
-                    if col in set(('track_num', 'disc_num')):
-                        m = re.search(tup2, val)
-                        num, tot = m.groups()
-                        num = None if num == 'None' else int(num)
-                        tot = None if tot == 'None' else int(tot)
-                        setattr(e.tag, col, (num, tot))
-                        continue
-                    if col in set(('genre', 'composer')):
-                        setattr(e.tag, col, None if val == 'None' else val)
-                        continue
-                    setattr(e.tag, col, val)
-            try:
-                e.tag.save()
-            except BaseException:
-                print(f"{red}error:{nc} could not save id3 tag for file {blue}{copypath}{nc}")
+                    e[col] = '' if val == '' else ast.literal_eval(val)
+            e.save()
         else:
             print(f"{red}error:{nc} output file {blue}{copypath}{nc} must be in output directory {blue}{outdir}{nc}. skipping...")
 
