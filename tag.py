@@ -5,6 +5,9 @@ from colorama import Fore, Style
 from datetime import datetime
 from pathlib import Path
 from mutagen.easyid3 import EasyID3
+from mutagen.id3 import ID3NoHeaderError
+from mutagen import MutagenError
+from functools import cmp_to_key
 
 # print info, warning, error messages nicely ...................................
 
@@ -39,13 +42,13 @@ def error(m):
 # default params ...............................................................
 
 # default id3 tags to add to tags file
-deftags = ['title', 'artist', 'album', 'tracknumber', 'genre']
+deftags = ['title', 'artist', 'album', 'tracknumber', 'discnumber', 'genre']
 
 # id3 tags to remove from mp3s
 deltags = ['acoustid_fingerprint', 'acoustid_id', 'albumartist',
         'albumartistsort', 'albumsort', 'arranger', 'artistsort', 'asin',
-        'author', 'barcode', 'bpm', 'catalognumber', 'compilation',
-        'composersort', 'conductor', 'copyright', 'date', 'discnumber',
+        'author', 'barcode', 'bpm', 'catalognumber', 'compilation', 'composer',
+        'composersort', 'conductor', 'copyright', 'date',
         'discsubtitle', 'encodedby', 'isrc', 'language', 'length', 'lyricist',
         'media', 'mood', 'musicbrainz_albumartistid', 'musicbrainz_albumid',
         'musicbrainz_albumstatus', 'musicbrainz_albumtype',
@@ -142,12 +145,37 @@ def get_tags():
                         e = EasyID3(f)
                         row = [r,r] + [(repr(e[field] if len(e[field])>1 else
                             e[field][0]) if field in e else '') for field in tags]
-                        x.add_row(row)
-                    except BaseException as e:
+                    except MutagenError as e:
                         if verbosity >= 1:
-                            warning(f'could not read id3 tags for {green(f)}. skipping...')
+                            warning(f'could not read id3 tags for {green(f)}. writing empty tag...')
+                        row = [r,r] + ['' for _ in range(len(tags))]
+                    x.add_row(row)
 
-    s = x.get_string(sortby='filename')
+    # sort by album, then discnumber, then tracknumber (if these columns are
+    # present, otherwise sort by file path)
+    def sortfn(a, b):
+        find = lambda arr, item: arr.index(item) if item in arr else -1
+        # the '+3' below is because we add [filename, newfilename] columns, and
+        # prettytable adds the "sortby" column so 3 columns in total
+        ialbum = find(tags, 'album')+3
+        idisc = find(tags, 'discnumber')+3
+        itrack = find(tags, 'tracknumber')+3
+        # val = lambda x: int(ast.literal_eval(x))
+        def val(x):
+            if '/' in x: x = x[:x.index('/')] + x[0]
+            try: return int(ast.literal_eval(x))
+            except BaseException: return float('inf')
+            # if x == '': return float('inf')
+            # return int(ast.literal_eval(x))
+        if ialbum >= 0 and a[ialbum] != b[ialbum]:
+            return +1 if a[ialbum] > b[ialbum] else -1
+        if idisc >= 0 and val(a[idisc]) != val(b[idisc]):
+            return val(a[idisc]) - val(b[idisc])
+        if itrack >= 0 and val(a[itrack]) != val(b[itrack]):
+            return val(a[itrack]) - val(b[itrack])
+        return +1 if a[1] > b[1] else -1
+
+    s = x.get_string(sortby='filename', sort_key=cmp_to_key(sortfn))
     with open(tagsfile, 'w') as f:
         f.write(s)
         if verbosity >= 2:
@@ -187,15 +215,18 @@ def set_tags():
             shutil.copy(orig, copypath)
             if os.path.splitext(copy)[-1] != '.mp3':
                 continue
-            e = EasyID3(copypath)
+            try:
+                e = EasyID3(copypath)
+            except ID3NoHeaderError:
+                e = EasyID3()
             for i,val in enumerate(vals):
                 if i != iorig and i != icopy:
                     col = columns[i]
                     e[col] = '' if val == '' else ast.literal_eval(val)
             for key in delete:
-                if key in e:
+                if key in e and key not in columns:
                     del e[key]
-            e.save()
+            e.save(copypath)
         else:
             if verbosity >= 1:
                 warning(f'output file {green(copypath)} must be in output directory {green(outdir)}. skipping...')
