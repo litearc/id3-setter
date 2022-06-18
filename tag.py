@@ -94,7 +94,7 @@ Let's say it looks like:
 The 'filename' column shows the input file paths (don't edit these since the
 tool uses them to find the mp3 files in the "set" step). The 'newfilename'
 column contains, for each file, the path (relative to an output directory
-specified in the "ste" command) the file is copied to before editing the id3
+specified in the "set" command) the file is copied to before editing the id3
 tags. This can also be used to rename the input files. The rest of the columns
 correspond to id3 tags (they use the same names as mutagen's EasyID3). All the
 values need to be valid python strings (you may need to use single or double
@@ -102,7 +102,7 @@ quoted strings or even \' and \" depending on if the field contains ' or ").
 
 Here, notice that the 'tracknumber' and 'discnumber' columns are empty, but the
 information is in the filename, i.e. the first (100's) digit contains the
-discnumber and the next two contain the discnumber. In vim, using visual-block
+discnumber and the next two contain the tracknumber. In vim, using visual-block
 copy/paste, it's pretty easy to modify the table to:
 
 +---------------------------------+---------------------------------+----------------+---------------+------------+-------------+------------+--------+
